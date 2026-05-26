@@ -789,14 +789,17 @@ def run_conversation(
         for idx, msg in enumerate(messages):
             api_msg = msg.copy()
 
-            # Safety net: normalize None content to empty string.  Some
-            # providers (DeepSeek V4 Flash thinking mode, etc.) reject null
-            # content with "content should be a string or a list".  All roles
-            # accept empty string as valid content.  Covers edge cases where
-            # tool messages or assistant(tool_calls) messages were persisted
-            # with null content from older sessions.
-            if api_msg.get("content") is None:
+            # Safety net: normalize invalid content types to valid strings.
+            # Some providers (DeepSeek V4 Flash thinking mode) reject content
+            # that is not a string or a list.  Catches:
+            #   - None (from old session DB records)
+            #   - dict (from tool handlers returning raw dicts)
+            #   - int / bool / other unexpected types
+            _c = api_msg.get("content")
+            if _c is None:
                 api_msg["content"] = ""
+            elif not isinstance(_c, (str, list)):
+                api_msg["content"] = json.dumps(_c, ensure_ascii=False)
 
             # Inject ephemeral context into the current turn's user message.
             # Sources: memory manager prefetch + plugin pre_llm_call hooks
